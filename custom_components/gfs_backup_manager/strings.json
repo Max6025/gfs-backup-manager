@@ -3,15 +3,14 @@
     "step": {
       "user": {
         "title": "GFS Backup Manager",
-        "description": "Verbindet sich automatisch mit dem GFS Backup Addon."
+        "description": "Verbindet sich mit dem GFS Backup Addon (HTTP-Server auf Port 8099)."
       }
     },
-    "abort": {
-      "already_configured": "GFS Backup Manager ist bereits eingerichtet.",
-      "addon_not_found": "GFS Backup Addon wurde nicht gefunden. Bitte zuerst das Addon installieren und starten."
-    },
     "error": {
-      "cannot_connect": "Verbindung zum Addon fehlgeschlagen."
+      "cannot_connect": "Verbindung zum GFS Backup Addon fehlgeschlagen. Bitte prüfen ob das Addon läuft."
+    },
+    "abort": {
+      "already_configured": "GFS Backup Manager ist bereits eingerichtet."
     }
   }
 }
