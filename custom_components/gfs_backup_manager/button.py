@@ -111,18 +111,10 @@ class GFSBackupButton(CoordinatorEntity, ButtonEntity):
         self._attr_device_info = DEVICE_INFO
 
     async def async_press(self) -> None:
-        """Befehl als dict ans Addon senden – input muss dict sein, kein JSON-String."""
+        """Befehl per HTTP direkt ans Addon senden."""
         _LOGGER.info("GFS Button: %s", self.entity_description.command)
-        try:
-            await self.hass.services.async_call(
-                "hassio",
-                "addon_stdin",
-                {
-                    "addon": ADDON_SLUG,
-                    "input": {"command": self.entity_description.command},
-                },
-                blocking=False,
-            )
+        ok = await self.coordinator.send_command(self.entity_description.command)
+        if ok:
             await self.coordinator.async_request_refresh()
-        except Exception as err:
-            _LOGGER.error("Fehler bei %s: %s", self.entity_description.command, err)
+        else:
+            _LOGGER.error("Button %s fehlgeschlagen", self.entity_description.command)
