@@ -1,0 +1,12 @@
+{
+  "domain": "gfs_backup_manager",
+  "name": "GFS Backup Manager",
+  "version": "1.0.0",
+  "documentation": "https://github.com/Max6025/gfs-backup-manager",
+  "issue_tracker": "https://github.com/Max6025/gfs-backup-manager/issues",
+  "codeowners": ["@Max6025"],
+  "requirements": [],
+  "dependencies": [],
+  "iot_class": "local_polling",
+  "config_flow": true
+}
