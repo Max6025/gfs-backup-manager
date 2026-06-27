@@ -23,13 +23,15 @@ class GFSBackupCoordinator(DataUpdateCoordinator):
             name=DOMAIN,
             update_interval=timedelta(seconds=SCAN_INTERVAL_SECONDS),
         )
-        self.hass = hass
 
     async def _async_update_data(self) -> dict:
         """Backup-Liste vom Supervisor holen und auswerten."""
         try:
             session = async_get_clientsession(self.hass)
-            token = self.hass.components.hassio.get_auth_token()
+
+            # Korrekter Token-Zugriff in modernem HA
+            from homeassistant.components.hassio import get_auth_token
+            token = get_auth_token(self.hass)
 
             async with session.get(
                 "http://supervisor/backups",
@@ -42,9 +44,14 @@ class GFSBackupCoordinator(DataUpdateCoordinator):
 
             all_backups = data.get("data", {}).get("backups", [])
 
-            result = {}
+            # Addon-Status prüfen
+            addon_running = await self._check_addon(token, session)
+
+            result = {
+                "addon_running": addon_running,
+            }
+
             for btype, prefix in BACKUP_PREFIXES.items():
-                # Nur GFS-Backups dieses Typs
                 typed = [
                     b for b in all_backups
                     if b.get("name", "").startswith(prefix)
@@ -52,12 +59,13 @@ class GFSBackupCoordinator(DataUpdateCoordinator):
                 typed.sort(key=lambda x: x.get("date", ""), reverse=True)
 
                 last = typed[0] if typed else None
+                size_bytes = last.get("size", 0) if last else 0
+
                 result[btype] = {
-                    "last_backup": last,
                     "count": len(typed),
                     "last_date": last.get("date") if last else None,
                     "last_name": last.get("name") if last else None,
-                    "last_size": last.get("size") if last else None,
+                    "last_size_mb": round(size_bytes / 1024 / 1024, 1) if size_bytes else None,
                     "last_slug": last.get("slug") if last else None,
                     "status": _calc_status(btype, last),
                     "next_backup": _calc_next(btype),
@@ -65,18 +73,35 @@ class GFSBackupCoordinator(DataUpdateCoordinator):
 
             return result
 
+        except UpdateFailed:
+            raise
         except Exception as err:
-            raise UpdateFailed(f"Fehler beim Abrufen der Backup-Daten: {err}") from err
+            raise UpdateFailed(f"Fehler: {err}") from err
+
+    async def _check_addon(self, token: str, session) -> bool:
+        """Prüft ob das Addon läuft."""
+        try:
+            from .const import ADDON_SLUG
+            async with session.get(
+                f"http://supervisor/addons/{ADDON_SLUG}/info",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=10,
+            ) as resp:
+                if resp.status == 200:
+                    info = await resp.json()
+                    return info.get("data", {}).get("state") == "started"
+        except Exception:
+            pass
+        return False
 
 
 def _calc_status(btype: str, last: dict | None) -> str:
-    """Berechnet den Status basierend auf dem letzten Backup-Datum."""
+    """Status basierend auf Alter des letzten Backups."""
     if last is None:
-        return "Kein Backup vorhanden"
+        return "Kein Backup"
 
     try:
         last_date_str = last.get("date", "")
-        # ISO Format: 2026-06-27T15:30:00+00:00
         last_date = datetime.fromisoformat(last_date_str.replace("Z", "+00:00"))
         now = datetime.now(last_date.tzinfo)
         age = now - last_date
@@ -96,21 +121,31 @@ def _calc_status(btype: str, last: dict | None) -> str:
 
 
 def _calc_next(btype: str) -> str:
-    """Berechnet wann das nächste Backup fällig ist (grobe Schätzung)."""
+    """Nächstes geplantes Backup (Schätzung)."""
     now = datetime.now()
-    if btype == "daily":
-        next_dt = (now + timedelta(days=1)).replace(hour=3, minute=0, second=0)
-    elif btype == "weekly":
-        days_until_sunday = (6 - now.weekday()) % 7 or 7
-        next_dt = (now + timedelta(days=days_until_sunday)).replace(hour=4, minute=0, second=0)
-    elif btype == "monthly":
-        if now.month == 12:
-            next_dt = now.replace(year=now.year + 1, month=1, day=1, hour=5, minute=0, second=0)
+    try:
+        if btype == "daily":
+            next_dt = (now + timedelta(days=1)).replace(
+                hour=3, minute=0, second=0, microsecond=0)
+        elif btype == "weekly":
+            days = (6 - now.weekday()) % 7 or 7
+            next_dt = (now + timedelta(days=days)).replace(
+                hour=4, minute=0, second=0, microsecond=0)
+        elif btype == "monthly":
+            if now.month == 12:
+                next_dt = now.replace(
+                    year=now.year + 1, month=1, day=1,
+                    hour=5, minute=0, second=0, microsecond=0)
+            else:
+                next_dt = now.replace(
+                    month=now.month + 1, day=1,
+                    hour=5, minute=0, second=0, microsecond=0)
+        elif btype == "yearly":
+            next_dt = now.replace(
+                year=now.year + 1, month=1, day=1,
+                hour=6, minute=0, second=0, microsecond=0)
         else:
-            next_dt = now.replace(month=now.month + 1, day=1, hour=5, minute=0, second=0)
-    elif btype == "yearly":
-        next_dt = now.replace(year=now.year + 1, month=1, day=1, hour=6, minute=0, second=0)
-    else:
+            return "Unbekannt"
+        return next_dt.strftime("%d.%m.%Y %H:%M")
+    except Exception:
         return "Unbekannt"
-
-    return next_dt.strftime("%d.%m.%Y %H:%M")
