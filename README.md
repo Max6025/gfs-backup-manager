@@ -29,3 +29,4 @@ Das [GFS Backup Addon](https://github.com/Max6025/gfs-backup-addon) muss install
 4. Hinzufügen → "GFS Backup Manager" suchen → Installieren
 5. HA neu starten
 6. Einstellungen → Integrationen → Integration hinzufügen → "GFS Backup Manager"
+### Version 2.0.0
