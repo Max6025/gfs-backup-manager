@@ -85,6 +85,17 @@ SENSOR_TYPES.append(
     )
 )
 
+# Prozess-Status Sensor
+SENSOR_TYPES.append(
+    GFSSensorDescription(
+        key="process_status",
+        name="GFS Backup – Aktueller Vorgang",
+        icon="mdi:backup-restore",
+        backup_type="",
+        value_key="process_status",
+    )
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -119,6 +130,20 @@ class GFSBackupSensor(CoordinatorEntity, SensorEntity):
         if self.entity_description.value_key == "addon_running":
             running = data.get("addon_running", False)
             return "Läuft" if running else "Gestoppt"
+
+        # Prozess-Status
+        if self.entity_description.value_key == "process_status":
+            phase = data.get("phase", "idle")
+            detail = data.get("phase_detail", "")
+            icons = {
+                "idle":     "💤 Warte auf nächstes Backup",
+                "creating": f"⚙️ Backup wird erstellt… {detail}",
+                "uploading":f"📤 Upload läuft… {detail}",
+                "rotating": f"🗑️ Rotation läuft… {detail}",
+                "success":  f"✅ Erfolgreich – {detail}",
+                "error":    f"❌ Fehler – {detail}",
+            }
+            return icons.get(phase, f"❓ {phase}")
 
         btype_data = data.get(self.entity_description.backup_type, {})
         value = btype_data.get(self.entity_description.value_key)
