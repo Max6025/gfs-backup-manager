@@ -1,0 +1,6 @@
+{
+  "name": "GFS Backup Manager",
+  "domains": ["sensor", "button"],
+  "iot_class": "local_polling",
+  "homeassistant": "2024.1.0"
+}
