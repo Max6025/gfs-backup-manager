@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 
 from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -15,10 +17,16 @@ from .coordinator import GFSBackupCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
+DEVICE_INFO = DeviceInfo(
+    identifiers={(DOMAIN, "gfs_backup_manager")},
+    name="GFS Backup Manager",
+    manufacturer="Max6025",
+    model="GFS Backup Addon",
+)
+
 
 @dataclass
 class GFSSensorDescription(SensorEntityDescription):
-    """Beschreibung eines GFS Sensors."""
     backup_type: str = ""
     value_key: str = ""
 
@@ -29,28 +37,28 @@ for btype, label in BACKUP_TYPE_LABELS.items():
     SENSOR_TYPES += [
         GFSSensorDescription(
             key=f"{btype}_status",
-            name=f"GFS {label} Status",
-            icon="mdi:backup-restore",
+            name=f"GFS {label} – Status",
+            icon="mdi:shield-check",
             backup_type=btype,
             value_key="status",
         ),
         GFSSensorDescription(
             key=f"{btype}_last_date",
-            name=f"GFS {label} Letztes Backup",
+            name=f"GFS {label} – Letztes Backup",
             icon="mdi:calendar-clock",
             backup_type=btype,
             value_key="last_date",
         ),
         GFSSensorDescription(
             key=f"{btype}_next",
-            name=f"GFS {label} Nächstes Backup",
+            name=f"GFS {label} – Nächstes Backup",
             icon="mdi:calendar-arrow-right",
             backup_type=btype,
             value_key="next_backup",
         ),
         GFSSensorDescription(
             key=f"{btype}_count",
-            name=f"GFS {label} Anzahl",
+            name=f"GFS {label} – Anzahl",
             icon="mdi:counter",
             backup_type=btype,
             value_key="count",
@@ -58,13 +66,24 @@ for btype, label in BACKUP_TYPE_LABELS.items():
         ),
         GFSSensorDescription(
             key=f"{btype}_size",
-            name=f"GFS {label} Größe",
+            name=f"GFS {label} – Größe",
             icon="mdi:harddisk",
             backup_type=btype,
-            value_key="last_size",
+            value_key="last_size_mb",
             native_unit_of_measurement="MB",
         ),
     ]
+
+# Addon-Status Sensor
+SENSOR_TYPES.append(
+    GFSSensorDescription(
+        key="addon_running",
+        name="GFS Backup Addon – Status",
+        icon="mdi:puzzle",
+        backup_type="",
+        value_key="addon_running",
+    )
+)
 
 
 async def async_setup_entry(
@@ -72,7 +91,6 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Sensoren einrichten."""
     coordinator: GFSBackupCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities(
         GFSBackupSensor(coordinator, description)
@@ -81,42 +99,33 @@ async def async_setup_entry(
 
 
 class GFSBackupSensor(CoordinatorEntity, SensorEntity):
-    """Ein GFS Backup Sensor."""
+    """GFS Backup Sensor."""
 
     entity_description: GFSSensorDescription
 
-    def __init__(
-        self,
-        coordinator: GFSBackupCoordinator,
-        description: GFSSensorDescription,
-    ) -> None:
+    def __init__(self, coordinator: GFSBackupCoordinator, description: GFSSensorDescription) -> None:
         super().__init__(coordinator)
         self.entity_description = description
         self._attr_unique_id = f"gfs_backup_{description.key}"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, "gfs_backup_manager")},
-            "name": "GFS Backup Manager",
-            "manufacturer": "Max6025",
-            "model": "GFS Backup Addon",
-        }
+        self._attr_device_info = DEVICE_INFO
 
     @property
     def native_value(self):
-        """Aktueller Wert."""
         data = self.coordinator.data
         if not data:
             return None
+
+        # Addon-Status
+        if self.entity_description.value_key == "addon_running":
+            running = data.get("addon_running", False)
+            return "Läuft" if running else "Gestoppt"
+
         btype_data = data.get(self.entity_description.backup_type, {})
         value = btype_data.get(self.entity_description.value_key)
-
-        # Größe von Bytes in MB umrechnen
-        if self.entity_description.value_key == "last_size" and value is not None:
-            return round(value / 1024 / 1024, 1)
 
         # Datum formatieren
         if self.entity_description.value_key == "last_date" and value:
             try:
-                from datetime import datetime
                 dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
                 return dt.strftime("%d.%m.%Y %H:%M")
             except Exception:
@@ -126,12 +135,11 @@ class GFSBackupSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        """Zusätzliche Attribute."""
         data = self.coordinator.data
-        if not data:
+        if not data or not self.entity_description.backup_type:
             return {}
         btype_data = data.get(self.entity_description.backup_type, {})
         return {
-            "last_name": btype_data.get("last_name"),
-            "last_slug": btype_data.get("last_slug"),
+            "letzter_name": btype_data.get("last_name"),
+            "slug": btype_data.get("last_slug"),
         }
