@@ -3,6 +3,8 @@
 DOMAIN = "gfs_backup_manager"
 ADDON_SLUG = "b9d02817_gfs_backup"
 ADDON_NAME = "GFS Backup Manager"
+# Addon läuft auf dem HA-Host, Port 8099 ist nach außen freigegeben
+ADDON_API_PORT = 8099
 
 SCAN_INTERVAL_SECONDS = 60
 
